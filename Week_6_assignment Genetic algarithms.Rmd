@@ -1,0 +1,141 @@
+---
+title: "Week 6 Assignment"
+author: "Rajesh Adhi"
+date: "2025-03-03"
+output: html_document
+---
+## Loading all the libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(sf)
+library(geosphere)
+library(dplyr)
+library(GA)
+```
+
+# Problem Statement
+Identifying 8 FQHCs in Missouri to introduce mental health services, prioritizing locations with the highest residential density within a 30-mile radius.
+
+# Data Loading and Preparation
+
+```{r load-data}
+# Load the population data
+pop.data <- data.table::fread("Mo_pop_Sim\\Mo_pop_Sim.csv")
+frac <- 0.0001
+small.data <- pop.data[sample(1:nrow(pop.data),
+                             size = round(nrow(pop.data) * frac),
+                             replace = F)]
+
+# Load the FQHC data
+data_path <- 'MO_2018_Federally_Qualified_Health_Center_Locations\\MO_2018_Federally_Qualified_Health_Center_Locations\\MO_2018_Federally_Qualified_Health_Center_Locations.shp'
+fqhc.data <- data.table(as.data.frame(st_read(data_path,
+                   'MO_2018_Federally_Qualified_Health_Center_Locations')))
+
+fqhc.data <- fqhc.data[, .(OBJECTID, Facility, City, County, Longitude, Latitude)]
+small.data <- small.data[, .(long, lat)]
+cat("Number of sampled population points:", nrow(small.data), "\n")
+cat("Number of FQHCs:", nrow(fqhc.data), "\n")
+```
+
+# Simple Coverage Analysis
+
+```{r}
+# Function to count residents within a 30-mile radius
+count_residents <- function(fqhc_idx) {
+  fqhc_loc <- fqhc.data[fqhc_idx]
+  distances <- distHaversine(
+    matrix(c(fqhc_loc$Longitude, fqhc_loc$Latitude), ncol = 2),
+    matrix(c(small.data$long, small.data$lat), ncol = 2)
+  ) / 1609.34  # Convert meters to miles
+  count <- sum(distances <= 30)
+  return(count)
+}
+```
+
+# Calculating thee coverage for each FQHC and displaying top 8 by simple coverage
+```{r}
+coverage_counts <- sapply(1:nrow(fqhc.data), count_residents)
+fqhc.data$coverage <- coverage_counts
+fqhc.data$estimated_total <- coverage_counts * (1/frac)
+fqhc.data <- fqhc.data[order(-coverage)]
+
+cat("Top 8 FQHCs by population count in 30-mile radius:\n")
+top_simple <- fqhc.data[1:8]
+print(top_simple[, .(OBJECTID, Facility, City, County, coverage, estimated_total)])
+```
+
+# GA Implementation
+# Function to calculate the fitness of a set of FQHCs We want to maximize total unique population coverage
+```{r}
+fitness_function <- function(selected_indices) {
+  covered_residents <- rep(FALSE, nrow(small.data))
+  for (idx in selected_indices) {
+    fqhc_loc <- fqhc.data[idx]
+    distances <- distHaversine(
+      matrix(c(fqhc_loc$Longitude, fqhc_loc$Latitude), ncol = 2),
+      matrix(c(small.data$long, small.data$lat), ncol = 2)
+    ) / 1609.34  # Converting meters to miles
+    # Marking residents as covered if within 30 miles
+    covered_residents <- covered_residents | (distances <= 30)
+  }
+  return(sum(covered_residents))
+}
+cat("Running genetic algorithm to optimize FQHC selection...\n")
+ga_result <- ga(
+  type = "permutation",
+  fitness = function(indices) fitness_function(indices[1:8]),  # Only use first 8 indices
+  lower = 1,
+  upper = nrow(fqhc.data),
+  popSize = 30,
+  maxiter = 15,
+  run = 5,
+  pmutation = 0.2,
+  monitor = FALSE
+)
+```
+
+```{r}
+best_indices <- ga_result@solution[1, 1:8]
+selected_fqhcs <- fqhc.data[best_indices]
+
+# Calculate total unique coverage
+unique_coverage <- fitness_function(best_indices)
+estimated_total <- unique_coverage * (1/frac)
+
+cat("\nGA-optimized selection of 8 FQHCs:\n")
+print(selected_fqhcs[, .(OBJECTID, Facility, City, County)])
+
+cat("\nTotal unique population coverage (sample):", unique_coverage, "\n")
+cat("Estimated total unique population coverage:", round(estimated_total), "\n")
+```
+
+# Individual Coverage Analysis
+```{r individual-coverage}
+# Calculate individual coverage for selected FQHCs
+individual_coverage <- sapply(best_indices, count_residents)
+selected_fqhcs$coverage <- individual_coverage
+selected_fqhcs$estimated_total <- individual_coverage * (1/frac)
+
+cat("Coverage by each selected FQHC:\n")
+print(selected_fqhcs[, .(Facility, City, coverage, estimated_total)])
+```
+
+# Conclusion
+
+I've chosen 8 FQHC's to introduce mental health services, focusing on the areas where the most people live within a 30-mile radius. Using a genetic algorithm, we found the best way to cover the most unique individuals with these services.
+
+**Why This Approach?**
+
+1. It focuses on where the most could be patients are, making it easier for them to access mental health care.
+2. The GA helps minimize overlap between different service areas, ensuring that more people are served.
+3. A 30-mile distance is practical for people traveling to get mental health support.
+
+**What We Assumed**
+
+1. Everyone has a similar need for mental health services, no matter their background.
+2. Each FQHC is equally capable of offering these new services.
+3. A 30-mile trip is a reasonable distance for people to travel for help.
+4. Everyone in that radius can access the services equally.
+
+This process allowed us to pick FQHCs that together reach more unique residents than just selecting the 8 with the highest individual coverage.
