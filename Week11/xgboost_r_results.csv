@@ -1,0 +1,13 @@
+Method used,Dataset size,Testing-set predictive performance (Mean Accuracy),Time taken for model CV (seconds)
+XGBoost in R – direct use of xgb.cv() with 5-fold CV,100,0.9104260651629072,0.950000000000017
+"XGBoost in R – via caret, with 5-fold CV",100,0.9199498746867167,2.9899999999999807
+XGBoost in R – direct use of xgb.cv() with 5-fold CV,1000,0.9439944248606216,3.180000000000007
+"XGBoost in R – via caret, with 5-fold CV",1000,0.9519993999849996,3.1399999999999864
+XGBoost in R – direct use of xgb.cv() with 5-fold CV,10000,0.9738997974999494,12.219999999999999
+"XGBoost in R – via caret, with 5-fold CV",10000,0.955,7.560000000000002
+XGBoost in R – direct use of xgb.cv() with 5-fold CV,100000,0.9829600000000001,28.419999999999987
+"XGBoost in R – via caret, with 5-fold CV",100000,0.9552200000000001,23.989999999999952
+XGBoost in R – direct use of xgb.cv() with 5-fold CV,1000000,0.987134,134.60000000000002
+"XGBoost in R – via caret, with 5-fold CV",1000000,0.9535399999945375,122.06
+XGBoost in R – direct use of xgb.cv() with 5-fold CV,10000000,0.9882109999885988,924.8599999999999
+"XGBoost in R – via caret, with 5-fold CV",10000000,0.9542716999250455,2255
