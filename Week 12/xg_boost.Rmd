@@ -1,0 +1,160 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+install.packages("xgboost")
+install.packages("Metrics")
+
+```
+
+```{r}
+library(xgboost)
+# library(Metrics) # Load if using Metrics::mse
+
+# --- Configuration ---
+data_sizes <- c(1000, 10000, 100000)
+file_names <- paste0("data_", data_sizes / 1000, "k.csv")
+validation_split_ratio <- 0.2
+random_seed <- 42
+
+# List to store results
+results_list <- list()
+
+# --- Main Loop for Data Sizes ---
+for (i in seq_along(data_sizes)) {
+  size <- data_sizes[i]
+  file_name <- file_names[i]
+  
+  cat(paste("\n--- Processing Data Size:", size, "---\n"))
+  
+  # Check if file exists
+  if (!file.exists(file_name)) {
+    cat(paste("ERROR: Data file", file_name, "not found. Please generate it first.\n"))
+    # Add placeholder results
+    results_list[[length(results_list) + 1]] <- data.frame(
+      `Data size` = size,
+      Configuration = "XGBoost (Demo Params)",
+      `Training error (MSE)` = NA,
+      `Validation error (MSE)` = NA,
+      `Time of execution (s)` = NA,
+      check.names = FALSE # Prevent R from changing column names
+    )
+    next # Skip to next iteration
+  }
+  
+  # Load data
+  df <- read.csv(file_name)
+  
+  # Separate features (X) and target (Y)
+  features <- c("X1", "X2", "X3", "X4")
+  target <- "Y"
+  
+  X <- df[, features]
+  Y <- df[, target]
+  
+  cat("  Y variable summary:\n")
+  print(summary(Y))
+  if(max(abs(Y), na.rm = TRUE) > 1e6) {
+      cat("  WARNING: Target variable 'Y' has large values. MSE will likely be large.\n")
+  }
+  
+  # Split data into training and validation sets
+  set.seed(random_seed) # Set seed for reproducible split
+  n_obs <- nrow(df)
+  n_train <- floor((1 - validation_split_ratio) * n_obs)
+  train_indices <- sample(1:n_obs, size = n_train, replace = FALSE)
+  val_indices <- setdiff(1:n_obs, train_indices)
+  
+  X_train <- X[train_indices, ]
+  y_train <- Y[train_indices]
+  X_val <- X[val_indices, ]
+  y_val <- Y[val_indices]
+  
+  # Convert data frames to matrices (required by xgboost)
+  train_matrix <- as.matrix(X_train)
+  val_matrix <- as.matrix(X_val)
+  
+  # Convert labels to numeric vectors
+  train_label <- as.numeric(y_train)
+  val_label <- as.numeric(y_val)
+  
+  # --- XGBoost Training ---
+  cat("  Training XGBoost model...\n")
+  
+  # Record start time
+  start_time <- Sys.time()
+  
+  # Train the XGBoost model using parameters from the demo code
+  # Objective changed to 'reg:squarederror' for regression
+  bst <- xgboost(data = train_matrix,
+                 label = train_label,
+                 max.depth = 2,
+                 eta = 1,          # High learning rate from demo
+                 nthread = 2,      # As in demo
+                 nrounds = 5,      # Low number of rounds from demo
+                 objective = "reg:squarederror", # Objective for Regression
+                 verbose = 0       # Set to 1 or 2 to see xgboost messages
+                ) 
+  
+  # Record end time
+  end_time <- Sys.time()
+  execution_time <- as.numeric(difftime(end_time, start_time, units = "secs"))
+  
+  cat("  XGBoost training finished.\n")
+  
+  # --- Evaluation ---
+  # Make predictions
+  pred_train <- predict(bst, train_matrix)
+  pred_val <- predict(bst, val_matrix)
+  
+  # Calculate MSE (Mean Squared Error)
+  train_mse <- mean((train_label - pred_train)^2)
+  val_mse <- mean((val_label - pred_val)^2)
+  
+  # Using Metrics package (optional alternative)
+  # train_mse <- Metrics::mse(train_label, pred_train)
+  # val_mse <- Metrics::mse(val_label, pred_val)
+  
+  cat(paste("    Final Training MSE:", format(train_mse, scientific = FALSE, digits = 4), "\n"))
+  cat(paste("    Final Validation MSE:", format(val_mse, scientific = FALSE, digits = 4), "\n"))
+  cat(paste("    Execution Time:", round(execution_time, 2), "seconds\n"))
+  
+  # Store results
+  results_list[[length(results_list) + 1]] <- data.frame(
+    `Data size` = size,
+    Configuration = "XGBoost (Demo Params)", # Indicate parameters used
+    `Training error (MSE)` = train_mse,
+    `Validation error (MSE)` = val_mse,
+    `Time of execution (s)` = execution_time,
+    check.names = FALSE # Prevent R from changing column names
+  )
+  
+} # End of loop
+
+```
+
+
+```{r}
+
+# --- Display Results ---
+cat("\n" , paste(rep("=", 50), collapse = ""), "\n")
+cat("               XGBOOST RESULTS SUMMARY (Demo R file Params)\n")
+cat(paste(rep("=", 50), collapse = ""), "\n\n")
+
+# Combine results from the list into a single data frame
+if (length(results_list) > 0) {
+  xgb_results_df <- do.call(rbind, results_list)
+  print(xgb_results_df, row.names = FALSE, digits = 4)
+} else {
+  cat("No results were generated.\n")
+}
+
+cat("\nNote: These results use max.depth=2, eta=1, nrounds=5 as specified.\n")
+cat("These hyperparameters are likely suboptimal for regression performance.\n")
+```
+
+
+
